@@ -1,10 +1,10 @@
-# Voice-Based Chatbot with Inappropriate Speech Detection (using better-profanity + sounddevice)
+# Voice-Based Chatbot with Inappropriate Speech Detection (Streamlit + better-profanity + sounddevice)
 
 # ---- STEP 1: Install Required Packages ----
-# Run this in terminal or notebook
-#!pip install streamlit openai SpeechRecognition pyttsx3 better-profanity sounddevice wavio
+# Run in terminal (not in code file)
+# pip install streamlit openai SpeechRecognition pyttsx3 better-profanity sounddevice wavio
 
-# ---- STEP 2: Import Required Libraries ----
+import streamlit as st
 import speech_recognition as sr
 import pyttsx3
 from better_profanity import profanity
@@ -14,39 +14,32 @@ import wavio
 import os
 import time
 
-# ---- STEP 3: Initialize Recognizer and Profanity Filter ----
 recognizer = sr.Recognizer()
 profanity.load_censor_words()
 
-# ---- STEP 4: Define Helper Functions ----
-
+# ---- Audio Recording ----
 def record_audio(duration=5, filename="output.wav", samplerate=44100):
-    print("Recording...")
+    st.info("Recording... Please speak now")
     audio_data = sd.rec(int(duration * samplerate), samplerate=samplerate, channels=1)
     sd.wait()
     wavio.write(filename, audio_data, samplerate, sampwidth=2)
     return filename
 
+# ---- Voice to Text ----
 def get_voice_input():
     filename = record_audio()
     with sr.AudioFile(filename) as source:
         audio = recognizer.record(source)
     try:
         text = recognizer.recognize_google(audio)
-        print(f"You said: {text}")
         return text
     except sr.UnknownValueError:
-        print("Sorry, I could not understand the audio.")
         return ""
     except sr.RequestError:
-        print("Request Failed from Google Speech Recognition API")
-        return ""
+        return "[Speech Recognition API error]"
 
-def check_profanity(text):
-    return profanity.contains_profanity(text)
-
+# ---- GPT Response ----
 def generate_response(text):
-    # GPT-based response using OpenAI API
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -56,32 +49,32 @@ def generate_response(text):
     except Exception as e:
         return f"Error: {str(e)}"
 
+# ---- Text to Speech ----
 def speak_response(text):
     engine = pyttsx3.init()
     engine.say(text)
     engine.runAndWait()
 
-# ---- STEP 5: Main Loop ----
-def main():
-    while True:
-        user_input = get_voice_input()
-        if user_input == "":
-            continue
+# ---- Streamlit App ----
+st.set_page_config(page_title="Voice Chatbot", layout="centered")
+st.title("🗣️ Voice Chatbot with Moderation")
 
-        if check_profanity(user_input):
-            warning = "Please refrain from using inappropriate language."
-            print(warning)
-            speak_response(warning)
-            continue
+if "response" not in st.session_state:
+    st.session_state.response = ""
 
+if st.button("🎤 Start Recording"):
+    user_input = get_voice_input()
+    if user_input == "":
+        st.warning("Sorry, I couldn't understand you. Please try again.")
+    elif profanity.contains_profanity(user_input):
+        st.error("🚫 Inappropriate language detected. Try being nicer!")
+        speak_response("Please refrain from using inappropriate language.")
+    else:
+        st.markdown(f"**You said:** {user_input}")
         response = generate_response(user_input)
-        print("Bot:", response)
+        st.session_state.response = response
+        st.markdown(f"**Chatbot says:** {response}")
         speak_response(response)
 
-        if "bye" in user_input.lower():
-            break
-
-# ---- RUN ----
-if __name__ == "__main__":
-    print("Voice Chatbot with Inappropriate Speech Detection")
-    main()
+if st.session_state.response:
+    st.success("✅ Response complete")
